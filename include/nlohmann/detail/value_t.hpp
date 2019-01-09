@@ -43,6 +43,7 @@ enum class value_t : std::uint8_t
     object,           ///< object (unordered set of name/value pairs)
     array,            ///< array (ordered collection of values)
     string,           ///< string value
+    unquoted_string,           ///< string value
     boolean,          ///< boolean value
     number_integer,   ///< number value (signed integer)
     number_unsigned,  ///< number value (unsigned integer)
@@ -62,8 +63,8 @@ Returns an ordering that is similar to Python:
 */
 inline bool operator<(const value_t lhs, const value_t rhs) noexcept
 {
-    static constexpr std::array<std::uint8_t, 8> order = {{
-            0 /* null */, 3 /* object */, 4 /* array */, 5 /* string */,
+    static constexpr std::array<std::uint8_t, 9> order = {{
+            0 /* null */, 3 /* object */, 4 /* array */, 5 /* string */, 6 /* unquoted string */,
             1 /* boolean */, 2 /* integer */, 2 /* unsigned */, 2 /* float */
         }
     };

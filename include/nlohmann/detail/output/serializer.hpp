@@ -235,6 +235,13 @@ class serializer
                 return;
             }
 
+            case value_t::unquoted_string:
+            {
+              // No protection!
+              o->write_characters(val.m_value.string->data(),val.m_value.string->size());
+              return;
+            }
+
             case value_t::boolean:
             {
                 if (val.m_value.boolean)

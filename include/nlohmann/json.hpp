@@ -159,6 +159,10 @@ Format](http://rfc7159.net/rfc7159)
 
 @nosubgrouping
 */
+
+
+
+
 NLOHMANN_BASIC_JSON_TPL_DECLARATION
 class basic_json
 {
@@ -864,6 +868,9 @@ class basic_json
 
     @since version 1.0.0
     */
+    
+    
+    
     union json_value
     {
         /// object (stored with pointer to save storage)
@@ -909,11 +916,12 @@ class basic_json
                 }
 
                 case value_t::string:
+                case value_t::unquoted_string:                
                 {
                     string = create<string_t>("");
                     break;
                 }
-
+                
                 case value_t::boolean:
                 {
                     boolean = boolean_t(false);
@@ -992,6 +1000,8 @@ class basic_json
             array = create<array_t>(std::move(value));
         }
 
+        
+
         void destroy(value_t t) noexcept
         {
             switch (t)
@@ -1013,6 +1023,7 @@ class basic_json
                 }
 
                 case value_t::string:
+                case value_t::unquoted_string:
                 {
                     AllocatorType<string_t> alloc;
                     std::allocator_traits<decltype(alloc)>::destroy(alloc, string);
@@ -1290,6 +1301,7 @@ class basic_json
         using other_number_integer_t = typename BasicJsonType::number_integer_t;
         using other_number_unsigned_t = typename BasicJsonType::number_unsigned_t;
         using other_string_t = typename BasicJsonType::string_t;
+        using other_unquoted_string_t = typename BasicJsonType::unquoted_string_t;
         using other_object_t = typename BasicJsonType::object_t;
         using other_array_t = typename BasicJsonType::array_t;
 
@@ -1309,6 +1321,9 @@ class basic_json
                 break;
             case value_t::string:
                 JSONSerializer<other_string_t>::to_json(*this, val.template get_ref<const other_string_t&>());
+                break;
+            case value_t::unquoted_string:
+                JSONSerializer<other_unquoted_string_t>::to_json(*this, val.template get_ref<const other_unquoted_string_t&>());
                 break;
             case value_t::object:
                 JSONSerializer<other_object_t>::to_json(*this, val.template get_ref<const other_object_t&>());
@@ -1646,6 +1661,7 @@ class basic_json
             case value_t::number_integer:
             case value_t::number_unsigned:
             case value_t::string:
+            case value_t::unquoted_string:
             {
                 if (JSON_UNLIKELY(not first.m_it.primitive_iterator.is_begin()
                                   or not last.m_it.primitive_iterator.is_end()))
@@ -1686,6 +1702,7 @@ class basic_json
             }
 
             case value_t::string:
+            case value_t::unquoted_string:
             {
                 m_value = *first.m_object->m_value.string;
                 break;
@@ -1769,6 +1786,7 @@ class basic_json
             }
 
             case value_t::string:
+            case value_t::unquoted_string:
             {
                 m_value = *other.m_value.string;
                 break;
@@ -1886,6 +1904,64 @@ class basic_json
         return *this;
     }
 
+    // unquoted constructor
+    struct unquoted_string_identifier_t {};  // Syntatic sugar: allows overriding the constructor.
+    static constexpr unquoted_string_identifier_t unquoted_string = unquoted_string_identifier_t();
+    basic_json(unquoted_string_identifier_t,string_t value) : m_type(value_t::unquoted_string), m_value(value) {};
+
+    struct sigfig_identifier_t {};  // Syntatic sugar: allows overriding the constructor.
+    static constexpr sigfig_identifier_t sigfig = sigfig_identifier_t();
+    basic_json(sigfig_identifier_t,double value, unsigned int sig_figs=3) : m_type(value_t::unquoted_string) {
+      if(!std::isfinite(value)) { m_value=std::string("\"nan\""); return; }
+      if(value==0) {m_value=std::string("0"); return;}
+      
+      // Find exponent
+      int X = (int)floor(log10(value));
+      unsigned int maxchar = sig_figs + 7;
+      char* buff = new char[maxchar];
+      if((X+1<sig_figs) ||  (X > sig_figs+4) ){
+        // For most of the above cases, the %g format works well!
+        snprintf(buff,maxchar,"%.*g",sig_figs,value);
+      } else { // if (X <= S+2)   This rounds to an integer, which is the most efficient.
+        snprintf(buff,maxchar,"%d",(int)value);
+      }
+      m_value = std::string(buff);
+      delete [] buff;
+    }
+    
+    struct fixed_identifier_t {};  // Syntatic sugar: allows overriding the constructor.
+    static constexpr fixed_identifier_t fixed = fixed_identifier_t();
+    basic_json(fixed_identifier_t, double value, int precision=3) : m_type(value_t::unquoted_string) {
+      if(!std::isfinite(value)) { m_value=std::string("\"nan\""); return; }
+      if(value==0) {m_value=std::string("0"); return;}
+      const int maxchar = 30;
+      char* buff = new char[maxchar];
+      int p = snprintf(buff,maxchar,"%.*f",precision,value);
+      p--;
+      int dec = precision;
+      while(buff[p] == '0' && dec>0) {
+         dec--; 
+         buff[p]=0;
+         p--;
+      }
+      if(buff[p]=='.') buff[p]=0;
+      m_value = std::string(buff);
+      delete [] buff;
+      // std::ostringstream oss;
+      // oss << std::fixed << std::setprecision(precision) << value;
+      // std::string tmp = oss.str();
+      // int dec = precision;
+      // // remove trailing 0s after the decimal point.
+      // while(*tmp.rbegin()=='0' && dec>0) {
+      //   dec--;
+      //   tmp.erase(tmp.end()-1);
+      // }
+      // // remove trailing decimal point.
+      // if(*tmp.rbegin()=='.') tmp.erase(tmp.end()-1);
+      // m_value = tmp;
+    }
+        
+      
     /*!
     @brief destructor
 
@@ -3636,6 +3712,7 @@ class basic_json
             case value_t::number_integer:
             case value_t::number_unsigned:
             case value_t::string:
+            case value_t::unquoted_string:            
             {
                 if (JSON_UNLIKELY(not pos.m_it.primitive_iterator.is_begin()))
                 {
@@ -3741,6 +3818,7 @@ class basic_json
             case value_t::number_integer:
             case value_t::number_unsigned:
             case value_t::string:
+            case value_t::unquoted_string:
             {
                 if (JSON_LIKELY(not first.m_it.primitive_iterator.is_begin()
                                 or not last.m_it.primitive_iterator.is_end()))
@@ -4678,6 +4756,7 @@ class basic_json
             }
 
             case value_t::string:
+            case value_t::unquoted_string:
             {
                 m_value.string->clear();
                 break;
@@ -5539,6 +5618,7 @@ class basic_json
                     return true;
 
                 case value_t::string:
+                case value_t::unquoted_string:
                     return (*lhs.m_value.string == *rhs.m_value.string);
 
                 case value_t::boolean:
@@ -5697,6 +5777,7 @@ class basic_json
                     return false;
 
                 case value_t::string:
+                case value_t::unquoted_string:                
                     return *lhs.m_value.string < *rhs.m_value.string;
 
                 case value_t::boolean:
@@ -6306,6 +6387,8 @@ class basic_json
                     return "array";
                 case value_t::string:
                     return "string";
+                case value_t::unquoted_string:
+                    return "unquoted_string";
                 case value_t::boolean:
                     return "boolean";
                 case value_t::discarded:
